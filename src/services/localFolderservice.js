@@ -37,36 +37,39 @@ function readLocalFolder(folderPath) {
       children
     };
   }
+if (stats.isFile()) {
+  const extension = path.extname(folderPath);
+  let parseResult = null;
 
-  if (stats.isFile()) {
-    const extension = path.extname(folderPath);
-    let parseResult = null;
+  const supportedExtensions = [".js", ".jsx", ".ts", ".tsx"];
 
-    const supportedExtensions = [".js", ".jsx", ".ts", ".tsx"];
+  if (supportedExtensions.includes(extension)) {
+    const code = fs.readFileSync(folderPath, "utf-8");
 
-    if (supportedExtensions.includes(extension)) {
-      const code = fs.readFileSync(folderPath, "utf-8");
+    parseResult = parseSourceFile({
+      fileName: path.basename(folderPath),
+      filePath: folderPath,
+      code
+    });
 
-      parseResult = parseSourceFile({
-        fileName: path.basename(folderPath),
-        filePath: folderPath,
-        code
-      });
-    } else {
-      parseResult = {
-        parseSuccess: false,
-        reason: "Unsupported file type"
-      };
+    if (parseResult && parseResult.ast) {
+      delete parseResult.ast;
     }
-
-    return {
-      name: path.basename(folderPath),
-      path: folderPath,
-      type: "file",
-      extension,
-      parseResult
+  } else {
+    parseResult = {
+      parseSuccess: false,
+      reason: "Unsupported file type"
     };
   }
+
+  return {
+    name: path.basename(folderPath),
+    path: folderPath,
+    type: "file",
+    extension,
+    parseResult
+  };
+}
 
   return null;
 }
