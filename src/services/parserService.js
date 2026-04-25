@@ -5,7 +5,7 @@ const traverse = require("@babel/traverse").default;
 function parseSourceFile({ fileName, filePath, code }) {
   const extension = path.extname(fileName);
 
-  const supportedExtensions = [".js", ".jsx", ".ts", ".tsx"];
+  const supportedExtensions = [".js", ".jsx", ".ts", ".tsx", ".json"];
 
   if (!supportedExtensions.includes(extension)) {
     return {
@@ -15,6 +15,10 @@ function parseSourceFile({ fileName, filePath, code }) {
   }
 
   try {
+    if (extension === ".json") {
+      return parseJsonFile({ fileName, filePath, code });
+    }
+
     const ast = babelParser.parse(code, {
       sourceType: "unambiguous",
       plugins: [
@@ -43,6 +47,45 @@ function parseSourceFile({ fileName, filePath, code }) {
       fileName,
       filePath,
       error: error.message
+    };
+  }
+}
+
+function parseJsonFile({ fileName, filePath, code }) {
+  try {
+    const jsonData = JSON.parse(code);
+
+    if (fileName === "package.json") {
+      return {
+        parseSuccess: true,
+        fileName,
+        filePath,
+        fileType: "package-json",
+        summary: parsePackageJson(jsonData, fileName, filePath)
+      };
+    }
+
+    return {
+      parseSuccess: true,
+      fileName,
+      filePath,
+      fileType: "json",
+      summary: {
+        fileName,
+        filePath,
+        jsonType: "generic-json",
+        keys: Object.keys(jsonData),
+        totalKeys: Object.keys(jsonData).length,
+        data: jsonData
+      }
+    };
+  } catch (error) {
+    return {
+      parseSuccess: false,
+      fileName,
+      filePath,
+      fileType: "json",
+      error: `Invalid JSON: ${error.message}`
     };
   }
 }
@@ -1001,6 +1044,336 @@ function getParams(params) {
 
     return "unknown";
   });
+}
+
+function parsePackageJson(packageData, fileName, filePath) {
+  const dependencies = packageData.dependencies || {};
+  const devDependencies = packageData.devDependencies || {};
+  const scripts = packageData.scripts || {};
+
+  const allDependencies = {
+    ...dependencies,
+    ...devDependencies
+  };
+
+  const detectedFrameworks = detectFrameworks(allDependencies, scripts);
+  const detectedTestTools = detectTestTools(allDependencies, scripts);
+
+  const entryPoints = detectEntryPoints(packageData, scripts);
+
+  return {
+    fileName,
+    filePath,
+    projectInfo: {
+      name: packageData.name || null,
+      version: packageData.version || null,
+      description: packageData.description || null,
+      projectType: packageData.type || "commonjs",
+      private: packageData.private || false,
+      license: packageData.license || null
+    },
+
+    entryPoints,
+
+    scripts: {
+      totalScripts: Object.keys(scripts).length,
+      availableScripts: scripts,
+      startScript: scripts.start || null,
+      devScript: scripts.dev || null,
+      testScript: scripts.test || null,
+      buildScript: scripts.build || null
+    },
+
+    dependencies: {
+      totalDependencies: Object.keys(dependencies).length,
+      totalDevDependencies: Object.keys(devDependencies).length,
+      dependencies,
+      devDependencies,
+      all: allDependencies
+    },
+
+    detectedStack: {
+      frameworks: detectedFrameworks,
+      testTools: detectedTestTools,
+      runtime: detectRuntime(allDependencies, scripts),
+      packageManagerHint: detectPackageManager(filePath)
+    },
+
+    devSureHints: {
+      probableEntryFile: entryPoints.primaryEntry,
+      probableStartCommand: scripts.dev || scripts.start || null,
+      probableTestCommand: scripts.test || null,
+      moduleSystem: packageData.type === "module" ? "esm" : "commonjs",
+      hasTestScript: Boolean(scripts.test),
+      hasDevScript: Boolean(scripts.dev),
+      hasStartScript: Boolean(scripts.start),
+      shouldLookForServerFile: shouldLookForServerFile(packageData, scripts, allDependencies),
+      shouldLookForRoutes: hasAnyDependency(allDependencies, [
+        "express",
+        "fastify",
+        "koa",
+        "hapi",
+        "@hapi/hapi"
+      ])
+    }
+  };
+}
+
+function detectEntryPoints(packageData, scripts) {
+  const entryPoints = {
+    main: packageData.main || null,
+    module: packageData.module || null,
+    browser: packageData.browser || null,
+    exports: packageData.exports || null,
+    bin: packageData.bin || null,
+    primaryEntry: null,
+    possibleEntries: []
+  };
+
+  if (packageData.main) {
+    entryPoints.possibleEntries.push(packageData.main);
+  }
+
+  if (packageData.module) {
+    entryPoints.possibleEntries.push(packageData.module);
+  }
+
+  if (typeof packageData.exports === "string") {
+    entryPoints.possibleEntries.push(packageData.exports);
+  }
+
+  if (typeof packageData.exports === "object" && packageData.exports !== null) {
+    Object.values(packageData.exports).forEach((value) => {
+      if (typeof value === "string") {
+        entryPoints.possibleEntries.push(value);
+      }
+
+      if (typeof value === "object" && value !== null) {
+        Object.values(value).forEach((nestedValue) => {
+          if (typeof nestedValue === "string") {
+            entryPoints.possibleEntries.push(nestedValue);
+          }
+        });
+      }
+    });
+  }
+
+  const scriptEntries = extractEntryFilesFromScripts(scripts);
+  entryPoints.possibleEntries.push(...scriptEntries);
+
+  entryPoints.possibleEntries = [...new Set(entryPoints.possibleEntries)];
+
+  entryPoints.primaryEntry =
+    packageData.main ||
+    packageData.module ||
+    scriptEntries[0] ||
+    "index.js";
+
+  return entryPoints;
+}
+
+function extractEntryFilesFromScripts(scripts) {
+  const entries = [];
+
+  Object.values(scripts || {}).forEach((script) => {
+    if (typeof script !== "string") return;
+
+    const patterns = [
+      /node\s+([^\s]+)/,
+      /nodemon\s+([^\s]+)/,
+      /ts-node\s+([^\s]+)/,
+      /tsx\s+([^\s]+)/,
+      /vite\s+--host\s+([^\s]+)/
+    ];
+
+    patterns.forEach((pattern) => {
+      const match = script.match(pattern);
+
+      if (match && match[1]) {
+        const file = match[1];
+
+        if (
+          file.endsWith(".js") ||
+          file.endsWith(".ts") ||
+          file.endsWith(".mjs") ||
+          file.endsWith(".cjs")
+        ) {
+          entries.push(file);
+        }
+      }
+    });
+  });
+
+  return entries;
+}
+
+function detectFrameworks(dependencies, scripts) {
+  const frameworks = [];
+
+  const frameworkMap = {
+    express: "Express.js",
+    fastify: "Fastify",
+    koa: "Koa.js",
+    "@nestjs/core": "NestJS",
+    next: "Next.js",
+    react: "React",
+    vue: "Vue",
+    "@angular/core": "Angular",
+    vite: "Vite",
+    "react-scripts": "Create React App",
+    "apollo-server": "Apollo Server",
+    graphql: "GraphQL"
+  };
+
+  Object.keys(frameworkMap).forEach((dep) => {
+    if (dependencies[dep]) {
+      frameworks.push({
+        name: frameworkMap[dep],
+        package: dep,
+        version: dependencies[dep]
+      });
+    }
+  });
+
+  Object.entries(scripts || {}).forEach(([scriptName, command]) => {
+    if (typeof command !== "string") return;
+
+    if (command.includes("next")) {
+      addUniqueFramework(frameworks, "Next.js", "script", scriptName);
+    }
+
+    if (command.includes("vite")) {
+      addUniqueFramework(frameworks, "Vite", "script", scriptName);
+    }
+
+    if (command.includes("nodemon") || command.includes("node")) {
+      addUniqueFramework(frameworks, "Node.js Backend", "script", scriptName);
+    }
+  });
+
+  return frameworks;
+}
+
+function addUniqueFramework(frameworks, name, source, value) {
+  const exists = frameworks.some((framework) => framework.name === name);
+
+  if (!exists) {
+    frameworks.push({
+      name,
+      package: source,
+      version: value
+    });
+  }
+}
+
+function detectTestTools(dependencies, scripts) {
+  const tools = [];
+
+  const testToolMap = {
+    jest: "Jest",
+    mocha: "Mocha",
+    chai: "Chai",
+    vitest: "Vitest",
+    cypress: "Cypress",
+    playwright: "Playwright",
+    supertest: "Supertest",
+    "@testing-library/react": "React Testing Library"
+  };
+
+  Object.keys(testToolMap).forEach((dep) => {
+    if (dependencies[dep]) {
+      tools.push({
+        name: testToolMap[dep],
+        package: dep,
+        version: dependencies[dep]
+      });
+    }
+  });
+
+  Object.entries(scripts || {}).forEach(([scriptName, command]) => {
+    if (typeof command !== "string") return;
+
+    Object.keys(testToolMap).forEach((toolPackage) => {
+      if (command.includes(toolPackage)) {
+        const exists = tools.some((tool) => tool.package === toolPackage);
+
+        if (!exists) {
+          tools.push({
+            name: testToolMap[toolPackage],
+            package: toolPackage,
+            version: `script:${scriptName}`
+          });
+        }
+      }
+    });
+  });
+
+  return tools;
+}
+
+function detectRuntime(dependencies, scripts) {
+  if (dependencies.next || scriptIncludes(scripts, "next")) {
+    return "nextjs";
+  }
+
+  if (dependencies.vite || scriptIncludes(scripts, "vite")) {
+    return "vite";
+  }
+
+  if (
+    dependencies.express ||
+    dependencies.fastify ||
+    dependencies.koa ||
+    scriptIncludes(scripts, "node") ||
+    scriptIncludes(scripts, "nodemon")
+  ) {
+    return "nodejs";
+  }
+
+  return "unknown";
+}
+
+function detectPackageManager(filePath) {
+  const normalizedPath = filePath.replace(/\\/g, "/");
+
+  if (normalizedPath.includes("pnpm-lock.yaml")) {
+    return "pnpm";
+  }
+
+  if (normalizedPath.includes("yarn.lock")) {
+    return "yarn";
+  }
+
+  if (normalizedPath.includes("package-lock.json")) {
+    return "npm";
+  }
+
+  return "npm-or-unknown";
+}
+
+function shouldLookForServerFile(packageData, scripts, dependencies) {
+  if (packageData.main) return true;
+
+  if (scriptIncludes(scripts, "node")) return true;
+  if (scriptIncludes(scripts, "nodemon")) return true;
+
+  return hasAnyDependency(dependencies, [
+    "express",
+    "fastify",
+    "koa",
+    "@nestjs/core",
+    "apollo-server"
+  ]);
+}
+
+function hasAnyDependency(dependencies, names) {
+  return names.some((name) => Boolean(dependencies[name]));
+}
+
+function scriptIncludes(scripts, keyword) {
+  return Object.values(scripts || {}).some(
+    (script) => typeof script === "string" && script.includes(keyword)
+  );
 }
 
 module.exports = { parseSourceFile };

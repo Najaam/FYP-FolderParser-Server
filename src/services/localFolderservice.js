@@ -37,17 +37,24 @@ function readLocalFolder(folderPath) {
       children
     };
   }
-if (stats.isFile()) {
+
+  if (stats.isFile()) {
   const extension = path.extname(folderPath);
+  const fileName = path.basename(folderPath);
+
   let parseResult = null;
 
   const supportedExtensions = [".js", ".jsx", ".ts", ".tsx"];
+  const supportedJsonFiles = ["package.json", "tsconfig.json", "jsconfig.json"];
 
-  if (supportedExtensions.includes(extension)) {
+  if (
+    supportedExtensions.includes(extension) ||
+    supportedJsonFiles.includes(fileName)
+  ) {
     const code = fs.readFileSync(folderPath, "utf-8");
 
     parseResult = parseSourceFile({
-      fileName: path.basename(folderPath),
+      fileName,
       filePath: folderPath,
       code
     });
@@ -63,7 +70,7 @@ if (stats.isFile()) {
   }
 
   return {
-    name: path.basename(folderPath),
+    name: fileName,
     path: folderPath,
     type: "file",
     extension,
