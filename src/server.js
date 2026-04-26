@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const analyzeRoutes = require("./routes/analyzeroutes");
+const buildRoutes = require("./routes/buildroutes");
 
 const app = express();
 
@@ -8,6 +9,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/analyze", analyzeRoutes);
+app.use("/api/build", buildRoutes);
 
 app.get("/", (req, res) => {
   res.json({
