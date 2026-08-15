@@ -44,3 +44,6 @@ coverage/
 *.pid
 *.seed
 *.pid.lock
+# Sandbox dependencies and generated Jest result
+sandbox/node_modules/
+sandbox/jest-result.json

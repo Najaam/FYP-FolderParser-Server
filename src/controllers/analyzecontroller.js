@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { readLocalFolder } = require("../services/localFolderservice");
+const { analyzeEntryPointApiFlow } = require("../services/apiFlowService");
 
 async function analyzeLocalFolder(req, res) {
   try {
@@ -52,4 +53,42 @@ async function analyzeLocalFolder(req, res) {
   }
 }
 
-module.exports = { analyzeLocalFolder };
+
+function analyzeApiFlow(req, res) {
+  try {
+    const { folderPath, entryFile, userStory } = req.body;
+
+    if (!folderPath) {
+      return res.status(400).json({
+        success: false,
+        message: "folderPath is required"
+      });
+    }
+
+    const result = analyzeEntryPointApiFlow({
+      folderPath,
+      entryFile,
+      userStory
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Analyze API flow error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while analyzing API flow",
+      error: error.message
+    });
+  }
+}
+
+module.exports = {
+  analyzeLocalFolder,
+  analyzeApiFlow
+};
+

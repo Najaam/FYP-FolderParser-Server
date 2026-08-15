@@ -17,8 +17,10 @@ async function buildLocalFolder(req, res) {
     if (!result.success) {
       return res.status(400).json(result);
     }
-
-    return res.status(200).json(result);
+    return res.status(200).json({
+      ...result,
+      nextAction: 'Build successful. Use /api/testing/start to add user rules and start API flow testing.'
+    });
   } catch (error) {
     console.error("Build local folder error:", error);
 
@@ -34,3 +36,5 @@ async function buildLocalFolder(req, res) {
 module.exports = {
   buildLocalFolder
 };
+
+//coment

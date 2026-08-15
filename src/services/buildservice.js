@@ -104,7 +104,7 @@ function detectBuildCommand(packageData, packageManager, folderPath) {
     };
   }
 
-  if (scripts.test) {
+  if (scripts.test && isUsableTestScript(scripts.test)) {
     return {
       mode: "script",
       command: packageManager,
@@ -132,6 +132,18 @@ function detectBuildCommand(packageData, packageManager, folderPath) {
   return null;
 }
 
+function isUsableTestScript(testScript) {
+  if (!testScript || typeof testScript !== "string") {
+    return false;
+  }
+
+  const normalized = testScript.toLowerCase();
+
+  return !(
+    normalized.includes("error: no test specified") ||
+    normalized.includes("no test specified")
+  );
+}
 async function buildLocalProject(folderPath) {
   const absoluteFolderPath = path.resolve(folderPath);
 
@@ -256,3 +268,4 @@ async function buildLocalProject(folderPath) {
 module.exports = {
   buildLocalProject
 };
+
