@@ -28,6 +28,7 @@ build/
 # Temporary files
 tmp/
 temp/
+.mongodb-data/
 
 # Uploads (since you have uploads folder)
 src/uploads/*
@@ -44,3 +45,6 @@ coverage/
 *.pid
 *.seed
 *.pid.lock
+# Sandbox dependencies and generated Jest result
+sandbox/node_modules/
+sandbox/jest-result.json

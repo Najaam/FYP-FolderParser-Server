@@ -1,24 +1,20 @@
-const express = require("express");
-const cors = require("cors");
-const analyzeRoutes = require("./routes/analyzeroutes");
-const buildRoutes = require("./routes/buildroutes");
+require("dotenv").config({ quiet: true });
+const app = require("./app");
+const connectDB = require("./config/db");
 
-const app = express();
+const PORT = process.env.PORT || 5000;
 
-app.use(cors());
-app.use(express.json());
+async function startServer() {
+  try {
+    await connectDB();
 
-app.use("/api/analyze", analyzeRoutes);
-app.use("/api/build", buildRoutes);
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error.message);
+    process.exit(1);
+  }
+}
 
-app.get("/", (req, res) => {
-  res.json({
-    message: "API is running"
-  });
-});
-
-const PORT = 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+startServer();

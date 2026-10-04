@@ -1,0 +1,11 @@
+{
+  "watch": ["src"],
+  "ignore": [
+    "sandbox/**",
+    ".devsure-test-sandbox/**",
+    ".devsure-generated-tests/**",
+    "node_modules/**"
+  ],
+  "ext": "js,json",
+  "exec": "node src/server.js"
+}
